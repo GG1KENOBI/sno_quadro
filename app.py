@@ -1,0 +1,528 @@
+#!/usr/bin/env python3
+"""
+Веб-приложение для поиска фото товаров из Excel.
+Flask + Selenium + Яндекс.Картинки + rembg.
+"""
+
+import os
+import re
+import json
+import time
+import uuid
+import logging
+import threading
+from pathlib import Path
+from io import BytesIO
+from urllib.parse import quote_plus
+
+from flask import (
+    Flask, render_template, request, jsonify, send_file,
+    send_from_directory, Response, stream_with_context
+)
+from PIL import Image
+import requests as http_requests
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+
+# Импортируем парсер из существующего скрипта
+from search_images import extract_products, Product
+
+# ─── Настройка ────────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger(__name__)
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
+
+UPLOAD_DIR = Path("uploads")
+TEMP_DIR = Path("temp_images")
+OUTPUT_DIR = Path("output")
+
+for d in [UPLOAD_DIR, TEMP_DIR, OUTPUT_DIR]:
+    d.mkdir(exist_ok=True)
+
+# Хранилище сессий (в памяти)
+sessions: dict[str, dict] = {}
+
+# ─── Selenium драйвер (singleton) ────────────────────────────────────────────
+
+_driver = None
+_driver_lock = threading.Lock()
+
+
+def get_driver():
+    global _driver
+    with _driver_lock:
+        if _driver is not None:
+            return _driver
+        log.info("Запуск Chrome (headless)...")
+        opts = Options()
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        opts.add_argument("--log-level=3")
+        opts.add_experimental_option("excludeSwitches", ["enable-logging"])
+        _driver = webdriver.Chrome(options=opts)
+        log.info("Chrome запущен.")
+        return _driver
+
+
+# ─── Поиск изображений через Яндекс ──────────────────────────────────────────
+
+def search_yandex_images(query: str, max_results: int = 5) -> list[str]:
+    """Возвращает список URL картинок из Яндекс.Картинок."""
+    driver = get_driver()
+    urls = []
+
+    try:
+        encoded = quote_plus(query)
+        url = f"https://yandex.ru/images/search?text={encoded}&isize=large"
+        driver.get(url)
+        time.sleep(2)
+
+        # Способ 1: data-bem
+        items = driver.find_elements(By.CSS_SELECTOR, ".serp-item")
+        for item in items[:max_results * 3]:
+            try:
+                data_bem = item.get_attribute("data-bem")
+                if data_bem:
+                    data = json.loads(data_bem)
+                    serp = data.get("serp-item", {})
+                    img_url = serp.get("img_href", "")
+                    if img_url and img_url.startswith("http"):
+                        urls.append(img_url)
+                    for dup in serp.get("dups", []):
+                        u = dup.get("img_href", "")
+                        if u and u.startswith("http"):
+                            urls.append(u)
+            except Exception:
+                continue
+
+        # Способ 2: page source
+        if not urls:
+            page = driver.page_source
+            found = re.findall(r'"img_href"\s*:\s*"(https?://[^"]+)"', page)
+            urls.extend(found)
+
+    except Exception as e:
+        log.error(f"Ошибка поиска: {e}")
+
+    # Дедупликация
+    seen = set()
+    unique = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            unique.append(u)
+    return unique[:max_results]
+
+
+# ─── Скачивание и обработка изображений ──────────────────────────────────────
+
+def download_image(url: str, timeout: int = 15) -> bytes | None:
+    """Скачивает изображение, возвращает bytes или None."""
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        resp = http_requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "")
+        if "image" not in content_type and "octet" not in content_type:
+            return None
+
+        data = resp.content
+        img = Image.open(BytesIO(data))
+        img.verify()
+        img = Image.open(BytesIO(data))
+        w, h = img.size
+        if w < 150 or h < 150:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def remove_background(image_data: bytes) -> bytes:
+    """Удаляет фон с помощью rembg и возвращает PNG на белом фоне."""
+    from rembg import remove
+    # rembg возвращает RGBA PNG
+    result = remove(image_data)
+    # Кладём на белый фон
+    img = Image.open(BytesIO(result)).convert("RGBA")
+    white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    white_bg.paste(img, (0, 0), img)
+    output = white_bg.convert("RGB")
+    buf = BytesIO()
+    output.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+def resize_image(image_data: bytes, width: int, height: int) -> bytes:
+    """Ресайз + размещение на белом фоне заданного размера (fit, не обрезка)."""
+    img = Image.open(BytesIO(image_data)).convert("RGB")
+
+    # Вписываем в заданный размер с сохранением пропорций
+    img.thumbnail((width, height), Image.LANCZOS)
+
+    # Размещаем по центру на белом фоне
+    canvas = Image.new("RGB", (width, height), (255, 255, 255))
+    x = (width - img.width) // 2
+    y = (height - img.height) // 2
+    canvas.paste(img, (x, y))
+
+    buf = BytesIO()
+    canvas.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+# ─── Flask маршруты ───────────────────────────────────────────────────────────
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/upload", methods=["POST"])
+def upload_file():
+    """Загружает Excel и парсит товары."""
+    if "file" not in request.files:
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".xls", ".xlsx", ".xlsm"):
+        return jsonify({"error": "Поддерживаются только .xls / .xlsx файлы"}), 400
+
+    # Сохраняем
+    session_id = str(uuid.uuid4())[:8]
+    filepath = UPLOAD_DIR / f"{session_id}{ext}"
+    file.save(filepath)
+
+    try:
+        products = extract_products(str(filepath))
+    except Exception as e:
+        return jsonify({"error": f"Ошибка парсинга: {e}"}), 400
+
+    if not products:
+        return jsonify({"error": "Товары не найдены в файле"}), 400
+
+    # Сохраняем сессию
+    sessions[session_id] = {
+        "products": [
+            {
+                "idx": i,
+                "brand": p.brand,
+                "model": p.model,
+                "color": p.color,
+                "raw_name": p.raw_name,
+                "display": str(p),
+            }
+            for i, p in enumerate(products)
+        ],
+        "images": {},  # {product_idx: [{id, url, local_path, selected, bg_removed}]}
+    }
+
+    return jsonify({
+        "session_id": session_id,
+        "products": sessions[session_id]["products"],
+        "count": len(products),
+    })
+
+
+@app.route("/search", methods=["POST"])
+def search_images():
+    """Ищет изображения для одного товара."""
+    data = request.json
+    session_id = data.get("session_id")
+    product_idx = data.get("product_idx")
+
+    if session_id not in sessions:
+        return jsonify({"error": "Сессия не найдена"}), 404
+
+    session = sessions[session_id]
+    product = session["products"][product_idx]
+
+    queries = [
+        f"{product['brand']} {product['model']} {product['color']} eyewear white background",
+        f"{product['brand']} {product['model']} {product['color']}",
+        f"{product['brand']} {product['model']} glasses",
+    ]
+
+    all_urls = []
+    for q in queries:
+        found = search_yandex_images(q, max_results=6)
+        for u in found:
+            if u not in all_urls:
+                all_urls.append(u)
+        if len(all_urls) >= 5:
+            break
+        time.sleep(0.5)
+
+    all_urls = all_urls[:5]
+
+    # Скачиваем превью
+    images = []
+    product_dir = TEMP_DIR / session_id / str(product_idx)
+    product_dir.mkdir(parents=True, exist_ok=True)
+
+    for i, url in enumerate(all_urls):
+        img_data = download_image(url)
+        if img_data is None:
+            continue
+
+        img_id = f"{product_idx}_{i}"
+        img_path = product_dir / f"{img_id}.jpg"
+
+        # Сохраняем оригинал
+        with open(img_path, "wb") as f:
+            f.write(img_data)
+
+        img = Image.open(BytesIO(img_data))
+        w, h = img.size
+
+        images.append({
+            "id": img_id,
+            "url": url,
+            "local_path": str(img_path),
+            "width": w,
+            "height": h,
+            "selected": False,
+            "bg_removed": False,
+        })
+
+    session["images"][str(product_idx)] = images
+
+    return jsonify({
+        "product_idx": product_idx,
+        "images": [
+            {
+                "id": img["id"],
+                "width": img["width"],
+                "height": img["height"],
+                "preview_url": f"/preview/{session_id}/{img['id']}",
+            }
+            for img in images
+        ],
+    })
+
+
+@app.route("/preview/<session_id>/<img_id>")
+def preview_image(session_id, img_id):
+    """Отдаёт превью изображения."""
+    session = sessions.get(session_id)
+    if not session:
+        return "Not found", 404
+
+    product_idx = img_id.split("_")[0]
+    imgs = session["images"].get(product_idx, [])
+    img_info = next((i for i in imgs if i["id"] == img_id), None)
+    if not img_info:
+        return "Not found", 404
+
+    return send_file(img_info["local_path"], mimetype="image/jpeg")
+
+
+@app.route("/remove_bg", methods=["POST"])
+def remove_bg():
+    """Удаляет фон у выбранного изображения."""
+    data = request.json
+    session_id = data.get("session_id")
+    img_id = data.get("img_id")
+
+    session = sessions.get(session_id)
+    if not session:
+        return jsonify({"error": "Сессия не найдена"}), 404
+
+    product_idx = img_id.split("_")[0]
+    imgs = session["images"].get(product_idx, [])
+    img_info = next((i for i in imgs if i["id"] == img_id), None)
+    if not img_info:
+        return jsonify({"error": "Изображение не найдено"}), 404
+
+    try:
+        with open(img_info["local_path"], "rb") as f:
+            original = f.read()
+
+        result = remove_background(original)
+
+        # Сохраняем обработанную версию
+        new_path = img_info["local_path"].replace(".jpg", "_nobg.jpg")
+        with open(new_path, "wb") as f:
+            f.write(result)
+
+        img_info["local_path"] = new_path
+        img_info["bg_removed"] = True
+
+        img = Image.open(BytesIO(result))
+        img_info["width"], img_info["height"] = img.size
+
+        return jsonify({
+            "success": True,
+            "img_id": img_id,
+            "preview_url": f"/preview/{session_id}/{img_id}?t={int(time.time())}",
+            "width": img_info["width"],
+            "height": img_info["height"],
+        })
+    except Exception as e:
+        log.error(f"Ошибка удаления фона: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/save", methods=["POST"])
+def save_selected():
+    """Сохраняет выбранные изображения с заданным размером."""
+    data = request.json
+    session_id = data.get("session_id")
+    selected = data.get("selected", {})  # {product_idx: [img_id, ...]}
+    width = data.get("width", 0)
+    height = data.get("height", 0)
+
+    session = sessions.get(session_id)
+    if not session:
+        return jsonify({"error": "Сессия не найдена"}), 404
+
+    output_dir = OUTPUT_DIR / session_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+
+    for product_idx_str, img_ids in selected.items():
+        product = session["products"][int(product_idx_str)]
+        imgs = session["images"].get(product_idx_str, [])
+
+        for img_id in img_ids:
+            img_info = next((i for i in imgs if i["id"] == img_id), None)
+            if not img_info:
+                continue
+
+            with open(img_info["local_path"], "rb") as f:
+                img_data = f.read()
+
+            # Ресайз если задан
+            if width > 0 and height > 0:
+                img_data = resize_image(img_data, width, height)
+
+            # Имя файла
+            safe_name = re.sub(r'[^\w\-]', '_',
+                               f"{product['brand']}_{product['model']}_{product['color']}")
+            suffix = f"_{img_id.split('_')[1]}" if len(img_ids) > 1 else ""
+            filename = f"{safe_name}{suffix}.jpg"
+            filepath = output_dir / filename
+
+            with open(filepath, "wb") as f:
+                f.write(img_data)
+
+            saved.append(filename)
+
+    return jsonify({
+        "success": True,
+        "saved": saved,
+        "output_dir": str(output_dir.absolute()),
+    })
+
+
+@app.route("/search_all", methods=["POST"])
+def search_all_products():
+    """SSE endpoint: ищет фото для всех товаров с прогрессом."""
+    data = request.json
+    session_id = data.get("session_id")
+
+    session = sessions.get(session_id)
+    if not session:
+        return jsonify({"error": "Сессия не найдена"}), 404
+
+    products = session["products"]
+    results = {}
+
+    for i, product in enumerate(products):
+        queries = [
+            f"{product['brand']} {product['model']} {product['color']} eyewear white background",
+            f"{product['brand']} {product['model']} {product['color']}",
+            f"{product['brand']} {product['model']} glasses",
+        ]
+
+        all_urls = []
+        for q in queries:
+            found = search_yandex_images(q, max_results=6)
+            for u in found:
+                if u not in all_urls:
+                    all_urls.append(u)
+            if len(all_urls) >= 5:
+                break
+            time.sleep(0.3)
+
+        all_urls = all_urls[:5]
+
+        images = []
+        product_dir = TEMP_DIR / session_id / str(i)
+        product_dir.mkdir(parents=True, exist_ok=True)
+
+        for j, url in enumerate(all_urls):
+            img_data = download_image(url)
+            if img_data is None:
+                continue
+
+            img_id = f"{i}_{j}"
+            img_path = product_dir / f"{img_id}.jpg"
+            with open(img_path, "wb") as f:
+                f.write(img_data)
+
+            img = Image.open(BytesIO(img_data))
+            w, h = img.size
+
+            images.append({
+                "id": img_id,
+                "url": url,
+                "local_path": str(img_path),
+                "width": w,
+                "height": h,
+                "selected": False,
+                "bg_removed": False,
+            })
+
+        session["images"][str(i)] = images
+        results[str(i)] = [
+            {
+                "id": img["id"],
+                "width": img["width"],
+                "height": img["height"],
+                "preview_url": f"/preview/{session_id}/{img['id']}",
+            }
+            for img in images
+        ]
+
+        # Задержка между товарами
+        if i < len(products) - 1:
+            time.sleep(1)
+
+    return jsonify({
+        "success": True,
+        "results": results,
+    })
+
+
+# ─── Запуск ──────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)
