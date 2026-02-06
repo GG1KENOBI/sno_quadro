@@ -1,820 +1,635 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SNO Quadro — Поиск фото товаров</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNO Quadro — Поиск фото товаров</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f7;
-            color: #1d1d1f;
-            min-height: 100vh;
-        }
+:root {
+  --bg:           #000000;
+  --bg-elevated:  #16181c;
+  --bg-hover:     #1d1f23;
+  --bg-card:      #16181c;
+  --border:       #2f3336;
+  --text:         #e7e9ea;
+  --text-muted:   #71767b;
+  --accent:       #1d9bf0;
+  --accent-hover: #1a8cd8;
+  --success:      #00ba7c;
+  --danger:       #f4212e;
+  --warning:      #ffd400;
+  --radius:       12px;
+  --radius-sm:    8px;
+  --font:         -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
 
-        /* ── Header ── */
-        .header {
-            background: #fff;
-            border-bottom: 1px solid #e0e0e0;
-            padding: 16px 32px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-        .header h1 {
-            font-size: 20px;
-            font-weight: 600;
-        }
-        .header .subtitle {
-            color: #6e6e73;
-            font-size: 14px;
-        }
+html { font-size: 15px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; font-family: var(--font); }
+input, select { font-family: var(--font); }
 
-        /* ── Upload Area ── */
-        .upload-area {
-            max-width: 600px;
-            margin: 60px auto;
-            text-align: center;
-        }
-        .upload-box {
-            border: 2px dashed #c0c0c0;
-            border-radius: 16px;
-            padding: 48px;
-            background: #fff;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .upload-box:hover {
-            border-color: #0071e3;
-            background: #f0f7ff;
-        }
-        .upload-box.dragover {
-            border-color: #0071e3;
-            background: #e8f2ff;
-        }
-        .upload-box svg {
-            width: 48px; height: 48px;
-            color: #86868b;
-            margin-bottom: 12px;
-        }
-        .upload-box h2 {
-            font-size: 18px;
-            margin-bottom: 8px;
-        }
-        .upload-box p {
-            color: #86868b;
-            font-size: 14px;
-        }
-        #fileInput { display: none; }
+/* ─── Layout ───────────────────────────────────────── */
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  min-height: 100vh;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
 
-        /* ── Main Layout ── */
-        .main-container {
-            display: none;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 24px;
-        }
+/* ─── Header ───────────────────────────────────────── */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(0,0,0,.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.header-logo {
+  width: 32px; height: 32px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 16px; color: #fff;
+  flex-shrink: 0;
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.header-hint {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+}
 
-        /* ── Toolbar ── */
-        .toolbar {
-            background: #fff;
-            border-radius: 12px;
-            padding: 16px 24px;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            flex-wrap: wrap;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        }
-        .toolbar .info {
-            flex: 1;
-            font-size: 14px;
-            color: #6e6e73;
-        }
-        .toolbar .info strong {
-            color: #1d1d1f;
-        }
+/* ─── Section ──────────────────────────────────────── */
+.section {
+  border-bottom: 1px solid var(--border);
+  padding: 20px 16px;
+}
+.section-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
 
-        /* ── Buttons ── */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 18px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-primary {
-            background: #0071e3;
-            color: #fff;
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: #0077ed;
-        }
-        .btn-secondary {
-            background: #e8e8ed;
-            color: #1d1d1f;
-        }
-        .btn-secondary:hover:not(:disabled) {
-            background: #dcdce0;
-        }
-        .btn-success {
-            background: #30d158;
-            color: #fff;
-        }
-        .btn-success:hover:not(:disabled) {
-            background: #28c04e;
-        }
-        .btn-danger {
-            background: #ff3b30;
-            color: #fff;
-        }
-        .btn-danger:hover:not(:disabled) {
-            background: #e6352b;
-        }
-        .btn-sm {
-            padding: 4px 10px;
-            font-size: 12px;
-            border-radius: 6px;
-        }
+/* ─── Upload Area ──────────────────────────────────── */
+.upload-area {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  transition: border-color .2s, background .2s;
+  cursor: pointer;
+}
+.upload-area:hover, .upload-area.dragover {
+  border-color: var(--accent);
+  background: rgba(29,155,240,.06);
+}
+.upload-area svg { fill: var(--text-muted); margin-bottom: 8px; }
+.upload-area p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+.upload-file-input { display: none; }
 
-        /* ── Size Input ── */
-        .size-input {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-        }
-        .size-input input {
-            width: 70px;
-            padding: 6px 8px;
-            border: 1px solid #d2d2d7;
-            border-radius: 6px;
-            font-size: 13px;
-            text-align: center;
-        }
-        .size-input input:focus {
-            outline: none;
-            border-color: #0071e3;
-            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
-        }
-        .size-input span {
-            color: #86868b;
-        }
+.file-info {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+  font-size: 14px;
+}
+.file-info .name { font-weight: 600; flex: 1; }
+.file-info .count { color: var(--accent); font-weight: 600; }
 
-        /* ── Progress ── */
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background: #e8e8ed;
-            border-radius: 2px;
-            overflow: hidden;
-            display: none;
-        }
-        .progress-bar .fill {
-            height: 100%;
-            background: #0071e3;
-            border-radius: 2px;
-            transition: width 0.3s;
-            width: 0%;
-        }
-        .progress-text {
-            font-size: 13px;
-            color: #6e6e73;
-            display: none;
-            margin-top: 4px;
-        }
+/* ─── Buttons ──────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  transition: background .15s, opacity .15s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover:not(:disabled) { background: var(--bg-hover); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-sm { padding: 4px 14px; font-size: 13px; }
+.btn-icon {
+  width: 34px; height: 34px; padding: 0;
+  border-radius: 50%; background: transparent; border: none;
+  color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s;
+}
+.btn-icon:hover { background: rgba(29,155,240,.1); color: var(--accent); }
 
-        /* ── Product Cards ── */
-        .products-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        .product-card {
-            background: #fff;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        }
-        .product-header {
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        .product-num {
-            background: #e8e8ed;
-            color: #6e6e73;
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            flex-shrink: 0;
-        }
-        .product-name {
-            flex: 1;
-        }
-        .product-name h3 {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        .product-name .meta {
-            font-size: 12px;
-            color: #86868b;
-            margin-top: 2px;
-        }
-        .product-status {
-            font-size: 12px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-weight: 500;
-        }
-        .status-waiting { background: #f5f5f7; color: #86868b; }
-        .status-searching { background: #fff3cd; color: #856404; }
-        .status-done { background: #d4edda; color: #155724; }
+/* ─── Action Bar ───────────────────────────────────── */
+.action-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-top: 4px;
+}
 
-        /* ── Image Grid ── */
-        .images-area {
-            padding: 16px 20px;
-            min-height: 60px;
-        }
-        .images-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 12px;
-        }
-        .image-card {
-            position: relative;
-            border-radius: 10px;
-            overflow: hidden;
-            border: 2px solid transparent;
-            cursor: pointer;
-            transition: all 0.15s;
-            background: #f5f5f7;
-        }
-        .image-card:hover {
-            border-color: #c0c0c0;
-        }
-        .image-card.selected {
-            border-color: #0071e3;
-            box-shadow: 0 0 0 2px rgba(0,113,227,0.25);
-        }
-        .image-card img {
-            width: 100%;
-            aspect-ratio: 1;
-            object-fit: contain;
-            background: #fafafa;
-            display: block;
-        }
-        .image-card .overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            pointer-events: none;
-        }
-        .image-card .check {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: #fff;
-            border: 2px solid #d2d2d7;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s;
-        }
-        .image-card.selected .check {
-            background: #0071e3;
-            border-color: #0071e3;
-        }
-        .image-card.selected .check::after {
-            content: '✓';
-            color: #fff;
-            font-size: 14px;
-            font-weight: 700;
-        }
-        .image-card .actions {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 8px;
-            background: linear-gradient(transparent, rgba(0,0,0,0.6));
-            display: flex;
-            gap: 4px;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: auto;
-        }
-        .image-card:hover .actions {
-            opacity: 1;
-        }
-        .image-card .actions .btn {
-            font-size: 11px;
-            padding: 4px 8px;
-            pointer-events: auto;
-        }
-        .image-card .size-label {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: rgba(0,0,0,0.5);
-            color: #fff;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        .image-card .bg-badge {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: #30d158;
-            color: #fff;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            display: none;
-        }
-        .image-card.bg-removed .bg-badge {
-            display: block;
-        }
-        .image-card.bg-removed .size-label {
-            left: auto;
-            right: 40px;
-        }
+/* ─── Product List ─────────────────────────────────── */
+.product-list { list-style: none; }
+.product-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
+}
+.product-item:hover { background: var(--bg-hover); }
+.product-item:last-child { border-bottom: none; }
+.product-header { display: flex; align-items: center; gap: 10px; }
+.product-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--bg-hover);
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); flex-shrink: 0;
+}
+.product-name { font-weight: 600; font-size: 15px; flex: 1; }
+.product-raw { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.product-actions { display: flex; gap: 6px; align-items: center; }
 
-        /* ── Loading States ── */
-        .placeholder {
-            color: #86868b;
-            font-size: 14px;
-            text-align: center;
-            padding: 20px;
-        }
-        .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #e8e8ed;
-            border-top-color: #0071e3;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .loading-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10;
-        }
+/* ─── Image Grid ───────────────────────────────────── */
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.image-card {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s, transform .1s;
+}
+.image-card:hover { border-color: var(--text-muted); transform: translateY(-1px); }
+.image-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.image-card img {
+  display: block; width: 100%;
+  aspect-ratio: 1; object-fit: contain;
+  background: #fff;
+}
+.image-meta {
+  padding: 6px 8px; font-size: 11px;
+  color: var(--text-muted);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.image-meta .dims { font-weight: 600; color: var(--text); }
+.image-meta .source-link {
+  white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100%;
+}
+.image-meta .source-link a { color: var(--accent); font-size: 11px; }
+.card-actions {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; gap: 4px;
+  opacity: 0; transition: opacity .15s;
+}
+.image-card:hover .card-actions { opacity: 1; }
+.card-actions .btn-icon {
+  width: 28px; height: 28px;
+  background: rgba(0,0,0,.7); color: #fff;
+  border-radius: 50%; backdrop-filter: blur(4px);
+}
+.card-actions .btn-icon:hover { background: var(--accent); }
 
-        /* ── Toast ── */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: #1d1d1f;
-            color: #fff;
-            padding: 12px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            z-index: 1000;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s;
-        }
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
+.check-badge {
+  position: absolute; top: 6px; left: 6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--accent);
+  display: none; align-items: center; justify-content: center;
+}
+.image-card.selected .check-badge { display: flex; }
 
-        /* ── Responsive ── */
-        @media (max-width: 768px) {
-            .toolbar { flex-direction: column; align-items: stretch; }
-            .images-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-            .header { padding: 12px 16px; }
-            .main-container { padding: 12px; }
-        }
-    </style>
+/* ─── Save Bar ─────────────────────────────────────── */
+.save-bar {
+  position: sticky; bottom: 0;
+  background: rgba(0,0,0,.9);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: none; align-items: center;
+  gap: 12px; flex-wrap: wrap; z-index: 100;
+}
+.save-bar.visible { display: flex; }
+.save-bar label { font-size: 13px; color: var(--text-muted); }
+.save-bar input[type="number"] {
+  width: 72px; padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-size: 14px; text-align: center;
+}
+.save-bar input[type="number"]:focus { border-color: var(--accent); outline: none; }
+.save-count { font-size: 14px; font-weight: 600; }
+
+/* ─── Spinner ──────────────────────────────────────── */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid transparent; border-top-color: currentColor;
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Toast ────────────────────────────────────────── */
+.toast-container {
+  position: fixed; bottom: 80px; left: 50%;
+  transform: translateX(-50%); z-index: 200;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--accent); color: #fff;
+  padding: 10px 20px; border-radius: 9999px;
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap;
+  animation: fadeUp .3s ease;
+  pointer-events: auto;
+}
+.toast.error { background: var(--danger); }
+.toast.success { background: var(--success); }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Progress Bar ─────────────────────────────────── */
+.progress-bar-wrap {
+  height: 3px; background: var(--bg-hover);
+  border-radius: 2px; overflow: hidden; display: none;
+}
+.progress-bar-wrap.active { display: block; }
+.progress-bar {
+  height: 100%; background: var(--accent);
+  transition: width .3s ease; width: 0%;
+}
+
+/* ─── Empty State ──────────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 48px 16px;
+  color: var(--text-muted); font-size: 14px;
+}
+.empty-state svg { fill: var(--text-muted); margin-bottom: 12px; }
+
+/* ─── Responsive ───────────────────────────────────── */
+@media (max-width: 640px) {
+  .images-grid { grid-template-columns: repeat(2, 1fr); }
+  .header h1 { font-size: 17px; }
+  .header-hint { display: none; }
+}
+</style>
 </head>
 <body>
 
-<!-- Header -->
-<div class="header">
-    <h1>📸 SNO Quadro</h1>
-    <span class="subtitle">Поиск фото товаров из Excel</span>
-</div>
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">Q</div>
+    <h1>SNO Quadro</h1>
+    <span class="header-hint">Поиск фото товаров из Excel</span>
+  </div>
 
-<!-- Upload Area -->
-<div class="upload-area" id="uploadArea">
-    <div class="upload-box" id="uploadBox">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
-        </svg>
-        <h2>Загрузите Excel-файл</h2>
-        <p>Перетащите .xls / .xlsx файл сюда или нажмите для выбора</p>
+  <!-- Upload Section -->
+  <div class="section" id="upload-section">
+    <div class="section-title">Загрузка файла</div>
+    <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+      <svg width="40" height="40" viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+      <p>Перетащите .xls / .xlsx файл или нажмите для выбора</p>
+      <input type="file" id="file-input" class="upload-file-input" accept=".xls,.xlsx,.xlsm">
     </div>
-    <input type="file" id="fileInput" accept=".xls,.xlsx,.xlsm">
-</div>
-
-<!-- Main Interface -->
-<div class="main-container" id="mainContainer">
-
-    <!-- Toolbar -->
-    <div class="toolbar">
-        <div class="info">
-            <strong id="productCount">0</strong> товаров найдено
-            · <span id="selectedCount">0</span> фото выбрано
-        </div>
-
-        <div class="size-input">
-            <label>Размер:</label>
-            <input type="number" id="outputWidth" placeholder="авто" min="100" max="5000">
-            <span>×</span>
-            <input type="number" id="outputHeight" placeholder="авто" min="100" max="5000">
-            <span>px</span>
-        </div>
-
-        <button class="btn btn-primary" id="btnSearchAll">
-            🔍 Искать все фото
-        </button>
-        <button class="btn btn-success" id="btnSave" disabled>
-            💾 Сохранить выбранные
-        </button>
-        <button class="btn btn-secondary" id="btnNewFile">
-            📁 Другой файл
-        </button>
+    <div id="file-info" class="file-info" style="display:none">
+      <span class="name" id="file-name"></span>
+      <span class="count" id="product-count"></span>
     </div>
+  </div>
 
-    <!-- Progress -->
-    <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
-    <div class="progress-text" id="progressText"></div>
+  <!-- Progress -->
+  <div style="padding: 0 16px;" id="progress-section">
+    <div class="progress-bar-wrap" id="progress-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+  </div>
 
-    <!-- Products -->
-    <div class="products-grid" id="productsGrid"></div>
+  <!-- Actions -->
+  <div class="section" id="actions-section" style="display:none">
+    <div class="action-bar">
+      <button class="btn btn-primary" id="btn-search-all">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        Искать все фото
+      </button>
+      <button class="btn btn-outline" id="btn-select-all-best">Выбрать лучшие</button>
+      <span id="search-status" style="font-size:13px; color:var(--text-muted)"></span>
+    </div>
+  </div>
+
+  <!-- Product List -->
+  <div id="products-container"></div>
+
+  <!-- Empty State -->
+  <div class="empty-state" id="empty-state">
+    <svg width="48" height="48" viewBox="0 0 24 24"><path d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4.86 8.86l-3 3.87L9 13.14 6 17h12l-3.86-5.14z"/></svg>
+    <p>Загрузите Excel-файл с товарами, чтобы начать поиск фото</p>
+  </div>
 </div>
 
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+<!-- Save Bar -->
+<div class="save-bar" id="save-bar">
+  <span class="save-count" id="save-count">0 выбрано</span>
+  <label>Размер:</label>
+  <input type="number" id="out-width" placeholder="Ш" value="0" min="0">
+  <span style="color:var(--text-muted)">&times;</span>
+  <input type="number" id="out-height" placeholder="В" value="0" min="0">
+  <span style="font-size:12px; color:var(--text-muted)">(0 = оригинал)</span>
+  <button class="btn btn-success" id="btn-save" style="margin-left:auto">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
+    Сохранить
+  </button>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toasts"></div>
 
 <script>
-// ─── State ───────────────────────────────────────────────────────────────────
+// ─── State ────────────────────────────────────────────
 let sessionId = null;
 let products = [];
-let productImages = {};  // {productIdx: [{id, preview_url, width, height, selected, bgRemoved}]}
+let selectedImages = {};
 
-// ─── DOM refs ────────────────────────────────────────────────────────────────
-const uploadArea = document.getElementById('uploadArea');
-const uploadBox = document.getElementById('uploadBox');
-const fileInput = document.getElementById('fileInput');
-const mainContainer = document.getElementById('mainContainer');
-const productsGrid = document.getElementById('productsGrid');
-const productCount = document.getElementById('productCount');
-const selectedCount = document.getElementById('selectedCount');
-const btnSearchAll = document.getElementById('btnSearchAll');
-const btnSave = document.getElementById('btnSave');
-const btnNewFile = document.getElementById('btnNewFile');
-const progressBar = document.getElementById('progressBar');
-const progressFill = document.getElementById('progressFill');
-const progressText = document.getElementById('progressText');
+// ─── Elements ─────────────────────────────────────────
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+const fileInfo = document.getElementById('file-info');
+const emptyState = document.getElementById('empty-state');
+const actionsSection = document.getElementById('actions-section');
+const productsContainer = document.getElementById('products-container');
+const saveBar = document.getElementById('save-bar');
+const saveCount = document.getElementById('save-count');
+const progressWrap = document.getElementById('progress-wrap');
+const progressBar = document.getElementById('progress-bar');
 
-// ─── Upload ──────────────────────────────────────────────────────────────────
-uploadBox.addEventListener('click', () => fileInput.click());
-uploadBox.addEventListener('dragover', e => { e.preventDefault(); uploadBox.classList.add('dragover'); });
-uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('dragover'));
-uploadBox.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadBox.classList.remove('dragover');
-    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
-fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) handleFile(fileInput.files[0]);
-});
-
-async function handleFile(file) {
-    const form = new FormData();
-    form.append('file', file);
-
-    uploadBox.innerHTML = '<div class="spinner"></div><p style="margin-top:12px">Загрузка и парсинг...</p>';
-
-    try {
-        const resp = await fetch('/upload', { method: 'POST', body: form });
-        const data = await resp.json();
-
-        if (data.error) {
-            showToast('❌ ' + data.error);
-            resetUpload();
-            return;
-        }
-
-        sessionId = data.session_id;
-        products = data.products;
-        productImages = {};
-
-        showMainInterface();
-    } catch (e) {
-        showToast('❌ Ошибка загрузки');
-        resetUpload();
-    }
+// ─── Toast ────────────────────────────────────────────
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
 }
 
-function resetUpload() {
-    uploadBox.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
-        </svg>
-        <h2>Загрузите Excel-файл</h2>
-        <p>Перетащите .xls / .xlsx файл сюда или нажмите для выбора</p>`;
+// ─── Progress ─────────────────────────────────────────
+function showProgress(pct) {
+  progressWrap.classList.add('active');
+  progressBar.style.width = pct + '%';
+}
+function hideProgress() {
+  progressWrap.classList.remove('active');
+  progressBar.style.width = '0%';
 }
 
-// ─── Main Interface ──────────────────────────────────────────────────────────
-function showMainInterface() {
-    uploadArea.style.display = 'none';
-    mainContainer.style.display = 'block';
-    productCount.textContent = products.length;
+// ─── Drag & Drop ──────────────────────────────────────
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault(); uploadArea.classList.remove('dragover');
+  if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; handleUpload(e.dataTransfer.files[0]); }
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleUpload(fileInput.files[0]); });
+
+// ─── Upload ───────────────────────────────────────────
+async function handleUpload(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  showProgress(15);
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); hideProgress(); return; }
+    sessionId = data.session_id;
+    products = data.products;
+    selectedImages = {};
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('product-count').textContent = data.count + ' товаров';
+    fileInfo.style.display = 'flex';
+    actionsSection.style.display = 'block';
+    emptyState.style.display = 'none';
+    showProgress(100);
+    setTimeout(hideProgress, 500);
     renderProducts();
+    toast('Загружено ' + data.count + ' товаров', 'success');
+  } catch (e) { toast('Ошибка загрузки', 'error'); hideProgress(); }
 }
 
+// ─── Render Products ──────────────────────────────────
 function renderProducts() {
-    productsGrid.innerHTML = '';
-    products.forEach((p, idx) => {
-        const card = document.createElement('div');
-        card.className = 'product-card';
-        card.id = `product-${idx}`;
-        card.innerHTML = `
-            <div class="product-header">
-                <div class="product-num">${idx + 1}</div>
-                <div class="product-name">
-                    <h3>${p.brand} ${p.model}</h3>
-                    <div class="meta">Цвет: ${p.color} · ${p.raw_name}</div>
-                </div>
-                <button class="btn btn-sm btn-primary" onclick="searchOne(${idx})">🔍 Искать</button>
-                <span class="product-status status-waiting" id="status-${idx}">Ожидание</span>
-            </div>
-            <div class="images-area" id="images-${idx}">
-                <div class="placeholder">Нажмите «Искать» или «Искать все фото»</div>
-            </div>`;
-        productsGrid.appendChild(card);
+  productsContainer.innerHTML = '';
+  products.forEach((p, idx) => {
+    const item = document.createElement('div');
+    item.className = 'product-item';
+    item.id = 'product-' + idx;
+    item.innerHTML =
+      '<div class="product-header">' +
+        '<span class="product-num">' + (idx + 1) + '</span>' +
+        '<div style="flex:1">' +
+          '<div class="product-name">' + esc(p.brand) + ' ' + esc(p.model) + ' ' + esc(p.color) + '</div>' +
+          '<div class="product-raw">' + esc(p.raw_name) + '</div>' +
+        '</div>' +
+        '<div class="product-actions">' +
+          '<button class="btn btn-outline btn-sm" onclick="searchProduct(' + idx + ')" id="btn-search-' + idx + '">Искать</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="images-grid" id="images-' + idx + '"></div>';
+    productsContainer.appendChild(item);
+  });
+}
+
+// ─── Search Single Product ────────────────────────────
+async function searchProduct(idx) {
+  const btn = document.getElementById('btn-search-' + idx);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Поиск...';
+  try {
+    const res = await fetch('/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, product_idx: idx }),
     });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    renderImages(idx, data.images);
+    toast(data.images.length + ' фото — ' + products[idx].brand + ' ' + products[idx].model, 'success');
+  } catch (e) { toast('Ошибка поиска', 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = 'Искать'; }
 }
 
-// ─── Search ──────────────────────────────────────────────────────────────────
-async function searchOne(idx) {
-    const status = document.getElementById(`status-${idx}`);
-    const area = document.getElementById(`images-${idx}`);
-    status.className = 'product-status status-searching';
-    status.textContent = '🔍 Поиск...';
-    area.innerHTML = '<div class="placeholder"><div class="spinner"></div> Поиск изображений в Яндексе...</div>';
+// ─── Search All ───────────────────────────────────────
+document.getElementById('btn-search-all').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-search-all');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Идёт поиск...';
+  const status = document.getElementById('search-status');
+  for (let i = 0; i < products.length; i++) {
+    status.textContent = (i + 1) + ' / ' + products.length;
+    showProgress(((i + 1) / products.length) * 100);
+    await searchProduct(i);
+  }
+  btn.disabled = false;
+  btn.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg> Искать все фото';
+  status.textContent = 'Готово!';
+  hideProgress();
+  toast('Поиск завершён!', 'success');
+});
 
-    try {
-        const resp = await fetch('/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, product_idx: idx }),
-        });
-        const data = await resp.json();
+// ─── Render Images ────────────────────────────────────
+function renderImages(productIdx, images) {
+  const grid = document.getElementById('images-' + productIdx);
+  grid.innerHTML = '';
+  if (!images.length) {
+    grid.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px;">Ничего не найдено</div>';
+    return;
+  }
+  images.forEach(img => {
+    const card = document.createElement('div');
+    card.className = 'image-card';
+    card.dataset.imgId = img.id;
+    card.dataset.productIdx = productIdx;
 
-        if (data.error) {
-            area.innerHTML = `<div class="placeholder">❌ ${data.error}</div>`;
-            status.className = 'product-status status-waiting';
-            status.textContent = 'Ошибка';
-            return;
-        }
+    let domain = '';
+    try { if (img.source_url) domain = new URL(img.source_url).hostname.replace('www.', ''); } catch(e) {}
 
-        productImages[idx] = data.images.map(img => ({
-            ...img,
-            selected: false,
-            bgRemoved: false,
-        }));
+    card.innerHTML =
+      '<div class="check-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>' +
+      '<div class="card-actions">' +
+        '<button class="btn-icon" title="Убрать фон" onclick="event.stopPropagation(); removeBg(\'' + img.id + '\',' + productIdx + ')">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-1-.01-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>' +
+        '</button>' +
+      '</div>' +
+      '<img src="' + img.preview_url + '" alt="" loading="lazy">' +
+      '<div class="image-meta">' +
+        '<span class="dims">' + img.width + '&times;' + img.height + '</span>' +
+        (domain ? '<span class="source-link"><a href="' + esc(img.source_url) + '" target="_blank" rel="noopener" title="' + esc(img.source_url) + '">' + esc(domain) + '</a></span>' : '') +
+      '</div>';
 
-        renderImages(idx);
-        status.className = 'product-status status-done';
-        status.textContent = `✓ ${data.images.length} фото`;
-    } catch (e) {
-        area.innerHTML = '<div class="placeholder">❌ Ошибка поиска</div>';
-        status.className = 'product-status status-waiting';
-        status.textContent = 'Ошибка';
-    }
+    card.addEventListener('click', () => toggleSelect(card, productIdx, img.id));
+    grid.appendChild(card);
+  });
 }
 
-btnSearchAll.addEventListener('click', async () => {
-    btnSearchAll.disabled = true;
-    progressBar.style.display = 'block';
-    progressText.style.display = 'block';
+// ─── Select / Deselect ────────────────────────────────
+function toggleSelect(card, productIdx, imgId) {
+  if (!selectedImages[productIdx]) selectedImages[productIdx] = new Set();
+  const set = selectedImages[productIdx];
+  if (set.has(imgId)) { set.delete(imgId); card.classList.remove('selected'); }
+  else { set.add(imgId); card.classList.add('selected'); }
+  updateSaveBar();
+}
+function updateSaveBar() {
+  let total = 0;
+  for (const k in selectedImages) total += selectedImages[k].size;
+  saveCount.textContent = total + ' выбрано';
+  saveBar.classList.toggle('visible', total > 0);
+}
 
-    // Устанавливаем статус всех товаров
-    products.forEach((_, idx) => {
-        const status = document.getElementById(`status-${idx}`);
-        status.className = 'product-status status-waiting';
-        status.textContent = 'В очереди';
+// ─── Select Best ──────────────────────────────────────
+document.getElementById('btn-select-all-best').addEventListener('click', () => {
+  document.querySelectorAll('.images-grid').forEach(grid => {
+    const first = grid.querySelector('.image-card:not(.selected)');
+    if (first) first.click();
+  });
+});
+
+// ─── Remove Background ───────────────────────────────
+async function removeBg(imgId, productIdx) {
+  toast('Удаление фона...', '');
+  try {
+    const res = await fetch('/remove_bg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, img_id: imgId }),
     });
-
-    try {
-        // Ищем по одному (чтобы показывать прогресс)
-        for (let i = 0; i < products.length; i++) {
-            progressFill.style.width = `${(i / products.length) * 100}%`;
-            progressText.textContent = `Поиск ${i + 1} из ${products.length}: ${products[i].brand} ${products[i].model}...`;
-
-            await searchOne(i);
-        }
-
-        progressFill.style.width = '100%';
-        progressText.textContent = `✓ Поиск завершён для всех ${products.length} товаров`;
-        showToast(`✓ Найдены фото для ${products.length} товаров`);
-    } catch (e) {
-        showToast('❌ Ошибка при поиске');
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    const card = document.querySelector('[data-img-id="' + imgId + '"]');
+    if (card) {
+      card.querySelector('img').src = data.preview_url;
+      const dims = card.querySelector('.dims');
+      if (dims) dims.textContent = data.width + '\u00d7' + data.height;
     }
+    toast('Фон удалён!', 'success');
+  } catch (e) { toast('Ошибка', 'error'); }
+}
 
-    btnSearchAll.disabled = false;
+// ─── Save ─────────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const sel = {};
+  for (const k in selectedImages) { if (selectedImages[k].size) sel[k] = [...selectedImages[k]]; }
+  if (!Object.keys(sel).length) { toast('Ничего не выбрано', 'error'); return; }
+  const width = parseInt(document.getElementById('out-width').value) || 0;
+  const height = parseInt(document.getElementById('out-height').value) || 0;
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Архивация...';
+  try {
+    const res = await fetch('/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, selected: sel, width, height }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      toast(err.error || 'Ошибка', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sno_quadro_' + sessionId + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('ZIP-архив скачан!', 'success');
+  } catch (e) { toast('Ошибка сохранения', 'error'); }
+  finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg> Сохранить';
+  }
 });
 
-// ─── Render Images ───────────────────────────────────────────────────────────
-function renderImages(idx) {
-    const area = document.getElementById(`images-${idx}`);
-    const imgs = productImages[idx] || [];
-
-    if (!imgs.length) {
-        area.innerHTML = '<div class="placeholder">Фото не найдены</div>';
-        return;
-    }
-
-    area.innerHTML = `<div class="images-grid">
-        ${imgs.map((img, i) => `
-            <div class="image-card ${img.selected ? 'selected' : ''} ${img.bgRemoved ? 'bg-removed' : ''}"
-                 id="img-${img.id}" onclick="toggleSelect(${idx}, ${i})">
-                <img src="${img.preview_url}" alt="" loading="lazy">
-                <div class="check"></div>
-                <span class="size-label">${img.width}×${img.height}</span>
-                <span class="bg-badge">✓ Фон удалён</span>
-                <div class="actions">
-                    <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); removeBg(${idx}, ${i})"
-                            id="rmbg-${img.id}" ${img.bgRemoved ? 'disabled' : ''}>
-                        ${img.bgRemoved ? '✓ Готово' : '🪄 Убрать фон'}
-                    </button>
-                </div>
-            </div>
-        `).join('')}
-    </div>`;
-}
-
-function toggleSelect(productIdx, imgIdx) {
-    const imgs = productImages[productIdx];
-    if (!imgs) return;
-    imgs[imgIdx].selected = !imgs[imgIdx].selected;
-    renderImages(productIdx);
-    updateSelectedCount();
-}
-
-function updateSelectedCount() {
-    let count = 0;
-    for (const imgs of Object.values(productImages)) {
-        count += imgs.filter(i => i.selected).length;
-    }
-    selectedCount.textContent = count;
-    btnSave.disabled = count === 0;
-}
-
-// ─── Remove Background ──────────────────────────────────────────────────────
-async function removeBg(productIdx, imgIdx) {
-    const img = productImages[productIdx][imgIdx];
-    const btn = document.getElementById(`rmbg-${img.id}`);
-    const card = document.getElementById(`img-${img.id}`);
-
-    btn.disabled = true;
-    btn.textContent = '⏳ Обработка...';
-
-    // Добавляем анимированный оверлей
-    const overlay = document.createElement('div');
-    overlay.className = 'loading-overlay';
-    overlay.innerHTML = '<div class="spinner"></div>';
-    card.style.position = 'relative';
-    card.appendChild(overlay);
-
-    try {
-        const resp = await fetch('/remove_bg', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, img_id: img.id }),
-        });
-        const data = await resp.json();
-
-        if (data.error) {
-            showToast('❌ ' + data.error);
-            btn.disabled = false;
-            btn.textContent = '🪄 Убрать фон';
-            overlay.remove();
-            return;
-        }
-
-        img.preview_url = data.preview_url;
-        img.width = data.width;
-        img.height = data.height;
-        img.bgRemoved = true;
-
-        renderImages(productIdx);
-        showToast('✓ Фон удалён');
-    } catch (e) {
-        showToast('❌ Ошибка при удалении фона');
-        btn.disabled = false;
-        btn.textContent = '🪄 Убрать фон';
-        overlay.remove();
-    }
-}
-
-// ─── Save ────────────────────────────────────────────────────────────────────
-btnSave.addEventListener('click', async () => {
-    const selected = {};
-    for (const [idx, imgs] of Object.entries(productImages)) {
-        const sel = imgs.filter(i => i.selected).map(i => i.id);
-        if (sel.length) selected[idx] = sel;
-    }
-
-    if (!Object.keys(selected).length) {
-        showToast('Сначала выберите фото');
-        return;
-    }
-
-    const width = parseInt(document.getElementById('outputWidth').value) || 0;
-    const height = parseInt(document.getElementById('outputHeight').value) || 0;
-
-    btnSave.disabled = true;
-    btnSave.textContent = '⏳ Сохранение...';
-
-    try {
-        const resp = await fetch('/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, selected, width, height }),
-        });
-        const data = await resp.json();
-
-        if (data.error) {
-            showToast('❌ ' + data.error);
-        } else {
-            showToast(`✓ Сохранено ${data.saved.length} фото → ${data.output_dir}`);
-        }
-    } catch (e) {
-        showToast('❌ Ошибка сохранения');
-    }
-
-    btnSave.disabled = false;
-    btnSave.textContent = '💾 Сохранить выбранные';
-    updateSelectedCount();
-});
-
-// ─── New file ────────────────────────────────────────────────────────────────
-btnNewFile.addEventListener('click', () => {
-    sessionId = null;
-    products = [];
-    productImages = {};
-    mainContainer.style.display = 'none';
-    uploadArea.style.display = 'block';
-    resetUpload();
-    fileInput.value = '';
-    progressBar.style.display = 'none';
-    progressText.style.display = 'none';
-});
-
-// ─── Toast ───────────────────────────────────────────────────────────────────
-function showToast(msg) {
-    const toast = document.getElementById('toast');
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 4000);
+// ─── Utils ────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 </script>
-
 </body>
 </html>

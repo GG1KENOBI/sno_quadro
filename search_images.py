@@ -321,156 +321,105 @@ def search_images_yandex(query: str, max_results: int = 8) -> list[str]:
     """
     Ищет изображения через Яндекс.Картинки и возвращает список URL
     полноразмерных изображений.
+
+    Яндекс использует React SPA — кликаем превью, извлекаем оригинал
+    из кнопки «Открыть» (MMViewerButtons-OpenImage).
     """
     driver = get_driver()
     urls = []
 
     try:
-        # Формируем URL поиска по Яндекс.Картинкам
-        # isize=large — большие изображения, icolor=white — белый фон (по возможности)
         encoded_query = quote_plus(query)
-        search_url = (
-            f"https://yandex.ru/images/search"
-            f"?text={encoded_query}"
-            f"&isize=large"
-        )
-
-        log.debug(f"  URL: {search_url}")
+        search_url = f"https://yandex.ru/images/search?text={encoded_query}&isize=large"
         driver.get(search_url)
+        time.sleep(3)
 
-        # Ждём загрузки результатов
-        time.sleep(2)
+        # Собираем превью-изображения
+        img_elements = driver.find_elements(
+            By.CSS_SELECTOR,
+            "img.ImagesContentImage-Image, img[class*='ContentImage-Image'], .SerpItem-Thumb img"
+        )
+        if not img_elements:
+            img_elements = [
+                el for el in driver.find_elements(By.TAG_NAME, "img")
+                if (el.get_attribute("src") or "").startswith("https://avatars.mds.yandex.net")
+            ]
 
-        # Способ 1: Извлекаем URL из data-атрибутов элементов
-        # Яндекс хранит данные об изображениях в JSON внутри data-bem атрибутов
-        selectors = [
-            "a.serp-item__link",
-            ".serp-item",
-            ".serp-item__preview",
-            "a.Link.ContentImage-Cover",
-            ".ContentImage-Cover",
-            ".justifier__item",
-        ]
+        log.debug(f"  Превью на странице: {len(img_elements)}")
 
-        items = []
-        for selector in selectors:
+        for i, img_el in enumerate(img_elements[:max_results + 5]):
+            if len(urls) >= max_results:
+                break
             try:
-                items = driver.find_elements(By.CSS_SELECTOR, selector)
-                if items:
-                    log.debug(f"  Найдено {len(items)} элементов по '{selector}'")
-                    break
-            except Exception:
-                continue
+                driver.execute_script("arguments[0].click();", img_el)
+                time.sleep(1.5)
 
-        # Пробуем извлечь URL из data-bem (JSON с данными об изображении)
-        for item in items[:max_results * 2]:
-            try:
-                data_bem = item.get_attribute("data-bem")
-                if data_bem:
-                    data = json.loads(data_bem)
-                    # Внутри может быть serp-item → img_href или dups[0].url
-                    serp = data.get("serp-item", {})
-                    img_url = serp.get("img_href") or serp.get("preview", [{}])[0].get("url", "")
-                    if img_url and img_url.startswith("http"):
-                        urls.append(img_url)
-                        if len(urls) >= max_results:
-                            break
-                    # dups — дубликаты, часто содержат оригинальную ссылку
-                    for dup in serp.get("dups", []):
-                        dup_url = dup.get("img_href") or dup.get("url", "")
-                        if dup_url and dup_url.startswith("http"):
-                            urls.append(dup_url)
-                            if len(urls) >= max_results:
-                                break
-            except Exception:
-                continue
+                img_url = None
 
-        # Способ 2: Если не получилось через data-bem, пробуем кликать на картинки
-        if not urls:
-            log.debug("  Пробуем извлечь URL через просмотр картинок...")
-            try:
-                # Кликаем первую картинку для открытия просмотра
-                img_links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/images/search']")
-                if not img_links:
-                    img_links = driver.find_elements(By.CSS_SELECTOR, ".serp-item img, .ContentImage img")
-                
-                for link in img_links[:max_results]:
+                # Кнопка «Открыть» → оригинальный URL
+                for sel in ["a.MMViewerButtons-OpenImage", "a[class*='OpenImage']"]:
                     try:
-                        link.click()
-                        time.sleep(1)
-                        # В режиме просмотра ищем оригинальную ссылку
-                        orig_links = driver.find_elements(
-                            By.CSS_SELECTOR,
-                            "a.MMViewerButtons-OpenImage, a[class*='Origin'], a[href*='img_url']"
-                        )
-                        for orig in orig_links:
-                            href = orig.get_attribute("href")
-                            if href and "img_url=" in href:
-                                # Извлекаем img_url из параметра
-                                import urllib.parse
-                                parsed = urllib.parse.urlparse(href)
-                                params = urllib.parse.parse_qs(parsed.query)
-                                if "img_url" in params:
-                                    urls.append(params["img_url"][0])
-                            elif href and href.startswith("http") and "yandex" not in href:
-                                urls.append(href)
-
-                        # Закрываем просмотр
-                        try:
-                            close_btn = driver.find_element(
-                                By.CSS_SELECTOR, ".MMViewerModal-Close, .Modal-Close"
-                            )
-                            close_btn.click()
-                            time.sleep(0.3)
-                        except Exception:
-                            driver.back()
-                            time.sleep(0.5)
-
+                        links = driver.find_elements(By.CSS_SELECTOR, sel)
+                        for link in links:
+                            href = link.get_attribute("href") or ""
+                            if href.startswith("http") and "yandex" not in href:
+                                img_url = href
+                                break
                     except Exception:
                         continue
+                    if img_url:
+                        break
+
+                # Fallback: большая картинка в просмотрщике
+                if not img_url:
+                    for sel in [".MMImage-Origin", "img.MMImage-Origin", ".MMImageContainer img"]:
+                        try:
+                            viewer_imgs = driver.find_elements(By.CSS_SELECTOR, sel)
+                            for vi in viewer_imgs:
+                                src = vi.get_attribute("src") or ""
+                                if src.startswith("http"):
+                                    img_url = src
+                                    break
+                        except Exception:
+                            continue
+                        if img_url:
+                            break
+
+                # Fallback: превью URL
+                if not img_url:
+                    src = img_el.get_attribute("src") or ""
+                    if src.startswith("http"):
+                        img_url = re.sub(r'&n=\d+', '', src)
+
+                if img_url and img_url not in urls:
+                    urls.append(img_url)
+
+                # Закрываем просмотрщик
+                closed = False
+                for sel in [".MMViewerModal-Close", ".Modal-Close", "[class*='CloseButton']"]:
+                    try:
+                        btns = driver.find_elements(By.CSS_SELECTOR, sel)
+                        for btn in btns:
+                            btn.click()
+                            closed = True
+                            time.sleep(0.3)
+                            break
+                    except Exception:
+                        continue
+                    if closed:
+                        break
+                if not closed:
+                    driver.back()
+                    time.sleep(0.5)
 
             except Exception as e:
-                log.debug(f"  Ошибка при клике: {e}")
-
-        # Способ 3: Извлекаем все src больших картинок
-        if not urls:
-            log.debug("  Пробуем извлечь src из img-тегов...")
-            try:
-                imgs = driver.find_elements(By.CSS_SELECTOR, "img.serp-item__thumb, img.ContentImage-Image")
-                for img_el in imgs[:max_results]:
-                    src = img_el.get_attribute("src")
-                    if src and src.startswith("http"):
-                        # Яндекс проксирует через свой CDN — пробуем использовать как есть
-                        urls.append(src)
-            except Exception:
-                pass
-
-        # Способ 4: Через page source парсим JSON из скрипта
-        if not urls:
-            log.debug("  Пробуем извлечь URL из page source...")
-            try:
-                page_source = driver.page_source
-                # Ищем все URL изображений в исходнике
-                img_pattern = re.findall(
-                    r'"img_href"\s*:\s*"(https?://[^"]+)"', page_source
-                )
-                urls.extend(img_pattern[:max_results])
-            except Exception:
-                pass
+                log.debug(f"  Ошибка картинки {i}: {e}")
 
     except Exception as e:
         log.error(f"Ошибка Яндекс поиска для '{query}': {e}")
 
-    # Убираем дубликаты, сохраняя порядок
-    seen = set()
-    unique_urls = []
-    for u in urls:
-        if u not in seen:
-            seen.add(u)
-            unique_urls.append(u)
-
-    log.debug(f"  Найдено {len(unique_urls)} URL")
-    return unique_urls[:max_results]
+    log.debug(f"  Найдено {len(urls)} URL")
+    return urls[:max_results]
 
 
 def download_image(url: str, timeout: int = 15) -> bytes | None:
